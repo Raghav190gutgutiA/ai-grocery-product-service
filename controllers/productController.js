@@ -1,7 +1,5 @@
-// controllers/productController.js
 const { publishToQueue } = require('../broker/rabbit');
 const Product = require('../model/Product');
-
 const { uploadToCloudinary } = require('../utils/uploadToCloud');
 
 exports.createProduct = async (req, res) => {
@@ -9,7 +7,9 @@ exports.createProduct = async (req, res) => {
 		const files = req.files;
 
 		if (!files || files.length === 0) {
-			return res.status(400).json({ message: 'Images required' });
+			return res.status(400).json({
+				message: 'Images required'
+			});
 		}
 
 		const uploads = await Promise.all(
@@ -22,46 +22,88 @@ exports.createProduct = async (req, res) => {
 			isThumbnail: index === 0,
 		}));
 
+		let categories = [];
+
+		if (req.body.category) {
+			if (Array.isArray(req.body.category)) {
+				categories = req.body.category;
+			} else {
+				categories = req.body.category
+					.split(',')
+					.map((item) => item.trim());
+			}
+		}
+
 		const product = await Product.create({
 			...req.body,
+			category: categories,
 			userId: req.user.id,
 			images,
 		});
-		 await publishToQueue("inventory_events", {
-      type: "PRODUCT_CREATED",
-      productId: product._id
-    });
 
+		await publishToQueue("inventory_events", {
+			type: "PRODUCT_CREATED",
+			product
+		});
 
 		res.status(201).json(product);
+
 	} catch (err) {
-		res.status(500).json({ error: err.message });
+		res.status(500).json({
+			error: err.message
+		});
 	}
 };
 
 exports.getProducts = async (req, res) => {
 	try {
-		const products = await Product.find({ isActive: true });
+
+		const products = await Product.find({
+			isActive: true
+		});
+
 		res.json(products);
+
 	} catch (err) {
-		res.status(500).json({ error: err.message });
+		res.status(500).json({
+			error: err.message
+		});
 	}
 };
 
 exports.getProductById = async (req, res) => {
 	try {
+
 		const product = await Product.findById(req.params.id);
+
 		res.json(product);
+
 	} catch (err) {
-		res.status(500).json({ error: err.message });
+		res.status(500).json({
+			error: err.message
+		});
 	}
 };
 
 exports.updateProduct = async (req, res) => {
 	try {
-		let updateData = { ...req.body };
+
+		let updateData = {
+			...req.body
+		};
+
+		if (req.body.category) {
+			if (Array.isArray(req.body.category)) {
+				updateData.category = req.body.category;
+			} else {
+				updateData.category = req.body.category
+					.split(',')
+					.map((item) => item.trim());
+			}
+		}
 
 		if (req.files && req.files.length > 0) {
+
 			const uploads = await Promise.all(
 				req.files.map((file) => uploadToCloudinary(file.buffer))
 			);
@@ -79,28 +121,45 @@ exports.updateProduct = async (req, res) => {
 			{ new: true }
 		);
 
+		await publishToQueue("inventory_events", {
+			type: "PRODUCT_UPDATED",
+			product: updated
+		});
+
 		res.json(updated);
+
 	} catch (err) {
-		res.status(500).json({ error: err.message });
+		res.status(500).json({
+			error: err.message
+		});
 	}
 };
 
 exports.deleteProduct = async (req, res) => {
-  try {
-    const productId = req.params.id;
+	try {
 
-    await Product.findByIdAndUpdate(productId, {
-      isActive: false
-    });
+		const productId = req.params.id;
 
-    await publishToQueue("inventory_events", {
-      type: "PRODUCT_DELETED",
-      productId
-    });
+		const deletedProduct = await Product.findByIdAndUpdate(
+			productId,
+			{
+				isActive: false
+			},
+			{ new: true }
+		);
 
-    res.json({ message: "Product deleted" });
+		await publishToQueue("inventory_events", {
+			type: "PRODUCT_DELETED",
+			product: deletedProduct
+		});
 
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+		res.json({
+			message: "Product deleted"
+		});
+
+	} catch (err) {
+		res.status(500).json({
+			error: err.message
+		});
+	}
 };
