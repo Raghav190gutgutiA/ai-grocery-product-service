@@ -20,16 +20,18 @@ exports.verifyToken = (req, res, next) => {
       id: decoded.id,
       role: decoded.role,
     };
+	// console.log("ef",user);s
 
     next();
   } catch (err) {
+	console.log("EWF0",err);
     return res.status(401).json({ message: "Invalid token" });
   }
 };
 
 exports.isAdmin = (req, res, next) => {
   try {
-    if (req.user.role !== "ADMIN") {
+    if (req.user.role !== "admin") {
       return res.status(403).json({ message: "Admin only" });
     }
     next();
